@@ -1,0 +1,5 @@
+/murata/*
+!/murata/*.py
+!/murata/output
+/murata/output/*
+!/murata/output/*raw_data.csv
