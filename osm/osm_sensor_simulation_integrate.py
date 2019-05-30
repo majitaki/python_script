@@ -6,6 +6,7 @@ import random
 from tqdm import tqdm
 from joblib import Parallel, delayed
 from enum import IntEnum, auto
+np.set_printoptions(precision=3)
 
 class Env_Dist(IntEnum):
     Normal = auto()
@@ -27,43 +28,53 @@ def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
     other_weight = (1 - max_weight) / (dim - 1)
     likelihoods = np.full(dim, other_weight)
     likelihoods[sample_index] = max_weight
-    return likelihoods / np.sum(likelihoods)
+    return likelihoods
 
 def get_likelihoods_for_particle_filter(dim, sample_array, weight):
     value_exist_num = np.sum(sample_array != 0)
-    max_weight = weight
-    other_weight = (1 - max_weight) / (value_exist_num - 1)
+    max_weight = 1 / (1 + (value_exist_num - 1) * (1 - weight))
+    other_weight = max_weight * (1 - weight)
     max_index = sample_array.argmax()
     likelihoods = np.array([max_weight if i == max_index else
                             other_weight if sample_array[i] != 0 else
                             0
                             for i in range(dim)])
-    
-    return likelihoods / np.sum(likelihoods)
+    return likelihoods
 
 def get_weight_distribute_for_particle_filter(sample_array, likelihoods):
     raw_w_dis = sample_array * likelihoods
-    return raw_w_dis / np.sum(raw_w_dis)
+    return raw_w_dis
 
-def get_pos_p_array_by_bayse_filter(pre_p_array, df_input, weight):
+def get_pos_p_array_by_bayse_filter(pre_p_array, input_array, weight):
     dim = len(pre_p_array)
-    for clm, item in df_input.iteritems():
-        sample_index = item.idxmax()
-        if item[sample_index] != 1:
-            print("Unexpected")
-        
-        likelihoods = get_likelihoods_for_bayse_filter(dim, sample_index, weight)
-        pos_p_array = pre_p_array * likelihoods
-        pre_p_array = pos_p_array
+    sample_index = input_array.argmax()
+    if input_array[sample_index] != 1:
+        print("Unexpected")
+    likelihoods = get_likelihoods_for_bayse_filter(dim, sample_index, weight)
+    pos_p_array = pre_p_array * likelihoods
+    if np.sum(pos_p_array) == 0:
+        return np.full(dim, 1.0 / dim)
     return pos_p_array / np.sum(pos_p_array)
 
-def get_pos_p_array_by_particle_filter(pre_p_array, df_input, weight, sample_num):
+def get_pos_p_array_by_particle_filter(pre_p_array, input_array, weight):
     dim = len(pre_p_array)
-    for item in df_input.iteritems():
-        likelihoods = get_likelihoods_for_particle_filter(dim, item.values, weight)
-        weight_dist = get_weight_distribute_for_particle_filter(item.values, likelihoods)
-        pos_p_array = pre_p_array * weight_dist
-        pre_p_array = pos_p_array
+    likelihoods = get_likelihoods_for_particle_filter(dim, input_array, weight)
+    weight_dist = get_weight_distribute_for_particle_filter(input_array, likelihoods)
+    pos_p_array = pre_p_array * weight_dist
+    
+    #print("-pre-")
+    #print(pre_p_array)
+    #print("-input-")
+    #print(input_array)
+    #print("-likelihoods-")
+    #print(likelihoods)
+    #print("-weight_dist-")
+    #print(weight_dist)
+    #print("-pos_p-")
+    #print(pos_p_array)
+    
+    if np.sum(pos_p_array) == 0:
+        return np.full(dim, 1.0 / dim)
     return pos_p_array / np.sum(pos_p_array)
 
 def observe_dist(dist_array):
@@ -86,7 +97,7 @@ def multi_observe_dist_to_dataframe(dist_array, num):
         observed_op_index = observe_dist(dist_array)
         nd_input[observed_op_index] = 1
         df_new_input = pd.DataFrame(nd_input)
-        if df_input == None:
+        if df_input is None:
             df_input = df_new_input
         else:    
             df_input = pd.concat([df_input, df_new_input], axis = 1)
@@ -96,7 +107,6 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
    dim = len(env_array)
    pre_p_array = np.full(dim, 1.0 / dim)
    sensor_op_array = np.array([0 for d in range(dim)])
-   df_input = None
    
    for step in range(step_size):
        if(step % op_intro_duration != 0):
@@ -106,11 +116,12 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
            continue
        
        if belief_setting == Belief_Setting.BayesFilter:
-           df_input = multi_observe_dist_to_dataframe(env_array, 1)
-           pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_input, sensor_acc)
+           df_one_sample = multi_observe_dist_to_dataframe(env_array, 1)
+           pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_one_sample[0].values, sensor_acc)
        elif belief_setting == Belief_Setting.ParticleFilter:
-           df_input = multi_observe_dist_to_dataframe(env_array, samples)
-           pos_p_array = get_pos_p_array_by_particle_filter(pre_p_array, df_input, sensor_acc)
+           df_samples = multi_observe_dist_to_dataframe(env_array, samples)
+           df_input = df_samples.sum(axis=1)
+           pos_p_array = get_pos_p_array_by_particle_filter(pre_p_array, df_input.values, sensor_acc)
        
        pre_p_array = pos_p_array
        
@@ -158,35 +169,35 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, fix
             return env_array
         
     count, bins, ignored = plt.hist(env_samples, dim, normed=True)
-    env_array = [(bins[i + 1] - bins[i]) * count[i] for i in range(dim)]
+    env_array = np.array([(bins[i + 1] - bins[i]) * count[i] for i in range(dim)])
     return env_array
 
-def make_sensor_acc(agent_weight_setting, ori_senror_acc, fix_sensor_acc):
-    my_sensor_acc = None
+def make_sensor_acc(agent_weight_setting, ori_senror_weight, fix_sensor_weight):
+    my_sensor_weight = None
     
     if agent_weight_setting == Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc:
-        my_sensor_acc = ori_senror_acc
+        my_sensor_weight = ori_senror_weight
     elif agent_weight_setting == Agent_Weight_Setting.Sensor_Weight_Fix:
-        my_sensor_acc = fix_sensor_acc
-    return my_sensor_acc
+        my_sensor_weight = fix_sensor_weight
+    return my_sensor_weight
 
 
-my_env_dist = Env_Dist.Turara_Depend_Sensor_Acc
-my_fix_turara = 0.2
+my_env_dist = Env_Dist.Binormal
+my_fix_turara = 0.65
 my_agent_weight_setting = Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
-my_fix_sensor_acc = 0.7
-my_belief_setting = Belief_Setting.BayesFilter
+my_fix_sensor_weight = 0.55
+#my_belief_setting = Belief_Setting.BayesFilter
+my_belief_setting = Belief_Setting.ParticleFilter
 my_samples = 10
 
-dim = 2
+dim = 5
 step_size = 1500
-rounds = 5
+rounds = 3
 threshold = 0.90
 sensor_size = 30
 op_intro_rate = 0.1
 op_intro_duration = 10
 op_intro_size = 3 * sensor_size
-multi = True
 duration_sensor_rate = 0.05
 
 graph_columns = ['sensor_acc', 'correct_rate', 'incorrect_rate', 'undeter_rate']
@@ -195,11 +206,17 @@ df_desc_acc = pd.DataFrame(columns = graph_columns)
 env_array = None
 thete_map = None
 
-if my_env_dist == Env_Dist.Turara_Fix:
+if my_env_dist != Env_Dist.Turara_Depend_Sensor_Acc:
     env_array = make_env(my_env_dist, dim, False, fix_turara = my_fix_turara)
     thete_map = env_array.argmax()
 
-for sensor_acc in np.arange(1/dim, 1.0, duration_sensor_rate):
+sensor_accs = None
+if my_belief_setting == Belief_Setting.BayesFilter:
+    sensor_accs = np.arange(1/dim, 1.0, duration_sensor_rate)
+elif my_belief_setting == Belief_Setting.ParticleFilter:
+    sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
+
+for sensor_acc in sensor_accs:
    rounds_correct_sensor_rate_list =[]
    rounds_undeter_sensor_rate_list =[]
    rounds_incorrect_sensor_rate_list =[]
@@ -211,12 +228,12 @@ for sensor_acc in np.arange(1/dim, 1.0, duration_sensor_rate):
            env_array = make_env(my_env_dist, dim, True, sensor_acc = sensor_acc)
            thete_map = env_array.argmax()
            
-       my_sensor_acc = make_sensor_acc(my_agent_weight_setting, sensor_acc, my_fix_sensor_acc)
+       my_sensor_weight = make_sensor_acc(my_agent_weight_setting, sensor_acc, my_fix_sensor_weight)
 
-       results = sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_acc, my_belief_setting, my_samples)
+       #results = sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_weight, my_belief_setting, my_samples)
 
-       results = Parallel(n_jobs = -1)(
-               [delayed(sensor_simulation)(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_acc, my_belief_setting, my_samples)
+       results = Parallel(n_jobs = 1)(
+               [delayed(sensor_simulation)(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_weight, my_belief_setting, my_samples)
                for j in range(sensor_size)]
                )
        for result in results:
