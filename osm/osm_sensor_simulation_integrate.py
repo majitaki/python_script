@@ -24,8 +24,11 @@ class Belief_Setting(IntEnum):
     ParticleFilter = auto()
 
 def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
-    max_weight = weight
-    other_weight = (1 - max_weight) / (dim - 1)
+    #max_weight = weight
+    #other_weight = (1 - max_weight) / (dim - 1)
+    max_weight = 1 / (1 + (dim - 1) * (1 - weight))
+    other_weight = max_weight * (1 - weight)
+    
     likelihoods = np.full(dim, other_weight)
     likelihoods[sample_index] = max_weight
     return likelihoods
@@ -61,18 +64,7 @@ def get_pos_p_array_by_particle_filter(pre_p_array, input_array, weight):
     likelihoods = get_likelihoods_for_particle_filter(dim, input_array, weight)
     weight_dist = get_weight_distribute_for_particle_filter(input_array, likelihoods)
     pos_p_array = pre_p_array * weight_dist
-    
-    #print("-pre-")
-    #print(pre_p_array)
-    #print("-input-")
-    #print(input_array)
-    #print("-likelihoods-")
-    #print(likelihoods)
-    #print("-weight_dist-")
-    #print(weight_dist)
-    #print("-pos_p-")
-    #print(pos_p_array)
-    
+        
     if np.sum(pos_p_array) == 0:
         return np.full(dim, 1.0 / dim)
     return pos_p_array / np.sum(pos_p_array)
@@ -105,7 +97,7 @@ def multi_observe_dist_to_dataframe(dist_array, num):
 
 def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples):
    dim = len(env_array)
-   pre_p_array = np.full(dim, 1.0 / dim)
+   pos_p_array = pre_p_array = np.full(dim, 1.0 / dim)
    sensor_op_array = np.array([0 for d in range(dim)])
    
    for step in range(step_size):
@@ -126,13 +118,14 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
        pre_p_array = pos_p_array
        
        if(len(np.where(pd.DataFrame(pos_p_array) > threshold)[0]) >= 1):
+           #print(pos_p_array)
            sensor_op_array[np.where(pd.DataFrame(pos_p_array) > threshold)[0][0]] = 1
            break
        
    return sensor_op_array, pos_p_array
 
     
-def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, fix_turara = None):
+def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None):
     env_samples = None
     
     if not is_depend_sensor_acc:
@@ -154,16 +147,20 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, fix
             env_samples = np.random.laplace(loc, scale, size)
             
         elif env_dist == Env_Dist.Turara_Fix:
-            max_weight = fix_turara
-            other_weight = (1 - max_weight) / (dim - 1)
+            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
+            other_weight = max_weight * (1 - sensor_acc)
+            #max_weight = sensor_acc
+            #other_weight = (1 - max_weight) / (dim - 1)
             env_array = np.full(dim, other_weight)
             env_array[0] = max_weight
             pd.DataFrame(env_array).plot(kind = 'bar')
             return env_array
     else:
         if env_dist == Env_Dist.Turara_Depend_Sensor_Acc:
-            max_weight = sensor_acc
-            other_weight = (1 - max_weight) / (dim - 1)
+            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
+            other_weight = max_weight * (1 - sensor_acc)
+            #max_weight = sensor_acc
+            #other_weight = (1 - max_weight) / (dim - 1)
             env_array = np.full(dim, other_weight)
             env_array[0] = max_weight
             return env_array
@@ -182,13 +179,13 @@ def make_sensor_acc(agent_weight_setting, ori_senror_weight, fix_sensor_weight):
     return my_sensor_weight
 
 
-my_env_dist = Env_Dist.Binormal
-my_fix_turara = 0.65
+my_env_dist = Env_Dist.Turara_Fix
+my_fix_turara = 0.2
 my_agent_weight_setting = Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
 my_fix_sensor_weight = 0.55
 #my_belief_setting = Belief_Setting.BayesFilter
 my_belief_setting = Belief_Setting.ParticleFilter
-my_samples = 10
+my_samples = 20
 
 dim = 5
 step_size = 1500
@@ -207,14 +204,16 @@ env_array = None
 thete_map = None
 
 if my_env_dist != Env_Dist.Turara_Depend_Sensor_Acc:
-    env_array = make_env(my_env_dist, dim, False, fix_turara = my_fix_turara)
+    env_array = make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara)
     thete_map = env_array.argmax()
 
 sensor_accs = None
-if my_belief_setting == Belief_Setting.BayesFilter:
-    sensor_accs = np.arange(1/dim, 1.0, duration_sensor_rate)
-elif my_belief_setting == Belief_Setting.ParticleFilter:
-    sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
+#if my_belief_setting == Belief_Setting.BayesFilter:
+#    sensor_accs = np.arange(1/dim, 1.0, duration_sensor_rate)
+#elif my_belief_setting == Belief_Setting.ParticleFilter:
+#    sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
+sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
+
 
 for sensor_acc in sensor_accs:
    rounds_correct_sensor_rate_list =[]
