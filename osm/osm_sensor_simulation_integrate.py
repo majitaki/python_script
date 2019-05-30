@@ -1,193 +1,22 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import math
-import random
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from enum import IntEnum, auto
 np.set_printoptions(precision=3)
-
-class Env_Dist(IntEnum):
-    Normal = auto()
-    Binormal = auto()
-    Laplace = auto()
-    Turara_Fix = auto()
-    Turara_Depend_Sensor_Acc = auto()
-    
-class Agent_Weight_Setting(IntEnum):
-    Sensor_Weight_Depend_Sensor_Acc = auto()
-    Sensor_Weight_Fix = auto()
-
-class Belief_Setting(IntEnum):
-    BayesFilter = auto()
-    ParticleFilter = auto()
-
-def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
-    #max_weight = weight
-    #other_weight = (1 - max_weight) / (dim - 1)
-    max_weight = 1 / (1 + (dim - 1) * (1 - weight))
-    other_weight = max_weight * (1 - weight)
-    
-    likelihoods = np.full(dim, other_weight)
-    likelihoods[sample_index] = max_weight
-    return likelihoods
-
-def get_likelihoods_for_particle_filter(dim, sample_array, weight):
-    value_exist_num = np.sum(sample_array != 0)
-    max_weight = 1 / (1 + (value_exist_num - 1) * (1 - weight))
-    other_weight = max_weight * (1 - weight)
-    max_index = sample_array.argmax()
-    likelihoods = np.array([max_weight if i == max_index else
-                            other_weight if sample_array[i] != 0 else
-                            0
-                            for i in range(dim)])
-    return likelihoods
-
-def get_weight_distribute_for_particle_filter(sample_array, likelihoods):
-    raw_w_dis = sample_array * likelihoods
-    return raw_w_dis
-
-def get_pos_p_array_by_bayse_filter(pre_p_array, input_array, weight):
-    dim = len(pre_p_array)
-    sample_index = input_array.argmax()
-    if input_array[sample_index] != 1:
-        print("Unexpected")
-    likelihoods = get_likelihoods_for_bayse_filter(dim, sample_index, weight)
-    pos_p_array = pre_p_array * likelihoods
-    if np.sum(pos_p_array) == 0:
-        return np.full(dim, 1.0 / dim)
-    return pos_p_array / np.sum(pos_p_array)
-
-def get_pos_p_array_by_particle_filter(pre_p_array, input_array, weight):
-    dim = len(pre_p_array)
-    likelihoods = get_likelihoods_for_particle_filter(dim, input_array, weight)
-    weight_dist = get_weight_distribute_for_particle_filter(input_array, likelihoods)
-    pos_p_array = pre_p_array * weight_dist
-        
-    if np.sum(pos_p_array) == 0:
-        return np.full(dim, 1.0 / dim)
-    return pos_p_array / np.sum(pos_p_array)
-
-def observe_dist(dist_array):
-    rnd = random.random()
-    accumlation_value = 0
-    
-    index = 0
-    for value in dist_array:
-        accumlation_value = accumlation_value + value
-        if rnd <= accumlation_value:
-            return index
-        index = index + 1
-    print('error')
-    return -1
-
-def multi_observe_dist_to_dataframe(dist_array, num):
-    df_input = None
-    for i in range(num):
-        nd_input = np.zeros(dim)
-        observed_op_index = observe_dist(dist_array)
-        nd_input[observed_op_index] = 1
-        df_new_input = pd.DataFrame(nd_input)
-        if df_input is None:
-            df_input = df_new_input
-        else:    
-            df_input = pd.concat([df_input, df_new_input], axis = 1)
-    return df_input
-
-def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples):
-   dim = len(env_array)
-   pos_p_array = pre_p_array = np.full(dim, 1.0 / dim)
-   sensor_op_array = np.array([0 for d in range(dim)])
-   
-   for step in range(step_size):
-       if(step % op_intro_duration != 0):
-           continue
-       active_sensor_size = math.ceil(sensor_size * op_intro_rate)
-       if(random.random() > active_sensor_size / sensor_size):
-           continue
-       
-       if belief_setting == Belief_Setting.BayesFilter:
-           df_one_sample = multi_observe_dist_to_dataframe(env_array, 1)
-           pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_one_sample[0].values, sensor_acc)
-       elif belief_setting == Belief_Setting.ParticleFilter:
-           df_samples = multi_observe_dist_to_dataframe(env_array, samples)
-           df_input = df_samples.sum(axis=1)
-           pos_p_array = get_pos_p_array_by_particle_filter(pre_p_array, df_input.values, sensor_acc)
-       
-       pre_p_array = pos_p_array
-       
-       if(len(np.where(pd.DataFrame(pos_p_array) > threshold)[0]) >= 1):
-           #print(pos_p_array)
-           sensor_op_array[np.where(pd.DataFrame(pos_p_array) > threshold)[0][0]] = 1
-           break
-       
-   return sensor_op_array, pos_p_array
-
-    
-def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None):
-    env_samples = None
-    
-    if not is_depend_sensor_acc:
-        if env_dist == Env_Dist.Normal:
-            mu = 0
-            sigma = 1
-            size = 1000
-            env_samples = np.random.normal(mu , sigma, size)
-            
-        elif env_dist == Env_Dist.Binormal:
-            num = 10
-            p = 0.5
-            size = 1000
-            env_samples = np.random.binomial(num, p, size)
-            
-        elif env_dist == Env_Dist.Laplace:
-            loc, scale = 0.0, 1.5
-            size = 1000
-            env_samples = np.random.laplace(loc, scale, size)
-            
-        elif env_dist == Env_Dist.Turara_Fix:
-            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
-            other_weight = max_weight * (1 - sensor_acc)
-            #max_weight = sensor_acc
-            #other_weight = (1 - max_weight) / (dim - 1)
-            env_array = np.full(dim, other_weight)
-            env_array[0] = max_weight
-            pd.DataFrame(env_array).plot(kind = 'bar')
-            return env_array
-    else:
-        if env_dist == Env_Dist.Turara_Depend_Sensor_Acc:
-            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
-            other_weight = max_weight * (1 - sensor_acc)
-            #max_weight = sensor_acc
-            #other_weight = (1 - max_weight) / (dim - 1)
-            env_array = np.full(dim, other_weight)
-            env_array[0] = max_weight
-            return env_array
-        
-    count, bins, ignored = plt.hist(env_samples, dim, normed=True)
-    env_array = np.array([(bins[i + 1] - bins[i]) * count[i] for i in range(dim)])
-    return env_array
-
-def make_sensor_acc(agent_weight_setting, ori_senror_weight, fix_sensor_weight):
-    my_sensor_weight = None
-    
-    if agent_weight_setting == Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc:
-        my_sensor_weight = ori_senror_weight
-    elif agent_weight_setting == Agent_Weight_Setting.Sensor_Weight_Fix:
-        my_sensor_weight = fix_sensor_weight
-    return my_sensor_weight
+import seaborn as sns
+import osm_functions as osm
 
 
-my_env_dist = Env_Dist.Turara_Fix
-my_fix_turara = 0.2
-my_agent_weight_setting = Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
+my_env_dist = osm.Env_Dist.Laplace
+my_fix_turara = 0.4
+my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
 my_fix_sensor_weight = 0.55
-#my_belief_setting = Belief_Setting.BayesFilter
-my_belief_setting = Belief_Setting.ParticleFilter
-my_samples = 20
+my_belief_setting = osm.Belief_Setting.BayesFilter
+#my_belief_setting = osm.Belief_Setting.ParticleFilter
+my_samples = 5
 
-dim = 5
+dim = 100
 step_size = 1500
 rounds = 3
 threshold = 0.90
@@ -197,21 +26,23 @@ op_intro_duration = 10
 op_intro_size = 3 * sensor_size
 duration_sensor_rate = 0.05
 
-graph_columns = ['sensor_acc', 'correct_rate', 'incorrect_rate', 'undeter_rate']
+average_columns = ['correct_rate', 'incorrect_rate', 'undeter_rate']
+graph_columns = ['sensor_acc'] + average_columns
+graph_three_columns = ['sensor_acc', 'value', 'rate_kind']
+rcv_columns = ['sensor_acc'] + ['receive_num']
+
 df_desc_acc = pd.DataFrame(columns = graph_columns)
+df_desc_all = pd.DataFrame(columns = graph_three_columns)
+df_desc_rcv_num = pd.DataFrame(columns = rcv_columns)
 
 env_array = None
 thete_map = None
 
-if my_env_dist != Env_Dist.Turara_Depend_Sensor_Acc:
-    env_array = make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara)
+if my_env_dist != osm.Env_Dist.Turara_Depend_Sensor_Acc:
+    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara)
     thete_map = env_array.argmax()
 
 sensor_accs = None
-#if my_belief_setting == Belief_Setting.BayesFilter:
-#    sensor_accs = np.arange(1/dim, 1.0, duration_sensor_rate)
-#elif my_belief_setting == Belief_Setting.ParticleFilter:
-#    sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
 sensor_accs = np.arange(0, 1.0 + duration_sensor_rate, duration_sensor_rate)
 
 
@@ -219,25 +50,29 @@ for sensor_acc in sensor_accs:
    rounds_correct_sensor_rate_list =[]
    rounds_undeter_sensor_rate_list =[]
    rounds_incorrect_sensor_rate_list =[]
+   rounds_receive_num_rate_list = []
 
    for r in tqdm(range(rounds), desc = "Sensor Acc: " + str(round(sensor_acc, 4))):
        df_output_op = pd.DataFrame()
+       df_receive_num = pd.DataFrame()
 
-       if my_env_dist == Env_Dist.Turara_Depend_Sensor_Acc:
-           env_array = make_env(my_env_dist, dim, True, sensor_acc = sensor_acc)
+       if my_env_dist == osm.Env_Dist.Turara_Depend_Sensor_Acc:
+           env_array = osm.make_env(my_env_dist, dim, True, sensor_acc = sensor_acc)
            thete_map = env_array.argmax()
            
-       my_sensor_weight = make_sensor_acc(my_agent_weight_setting, sensor_acc, my_fix_sensor_weight)
-
-       #results = sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_weight, my_belief_setting, my_samples)
+       my_sensor_weight = osm.make_sensor_acc(my_agent_weight_setting, sensor_acc, my_fix_sensor_weight)
 
        results = Parallel(n_jobs = 1)(
-               [delayed(sensor_simulation)(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_weight, my_belief_setting, my_samples)
+               [delayed(osm.sensor_simulation)(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, my_sensor_weight, my_belief_setting, my_samples)
                for j in range(sensor_size)]
                )
        for result in results:
-           df_output_op = df_output_op.append(pd.DataFrame(result[0]).T)    
-
+           df_output_op = df_output_op.append(pd.DataFrame(result[0]).T)
+           df_receive_num = df_receive_num.append([result[2]])
+       
+       df_output_op = df_output_op.reset_index(drop=True)
+       df_receive_num = df_receive_num.reset_index(drop=True)
+        
        df_correct = pd.DataFrame(df_output_op[thete_map] == 1)
        df_undeter = pd.DataFrame(df_output_op.sum(axis = 1))
        correct_sensor_rate = df_correct.where(df_correct == True).dropna().count() / sensor_size
@@ -247,16 +82,45 @@ for sensor_acc in sensor_accs:
        rounds_correct_sensor_rate_list.append(correct_sensor_rate.values[0])
        rounds_undeter_sensor_rate_list.append(undeter_sensor_rate)
        rounds_incorrect_sensor_rate_list.append(incorrect_sensor_rate.values[0])
-
-
-   desc_acc = [sensor_acc, round(np.average(rounds_correct_sensor_rate_list), 4), round(np.average(rounds_incorrect_sensor_rate_list), 4), round(np.average(rounds_undeter_sensor_rate_list), 4)]
+       rounds_receive_num_rate_list.append(df_receive_num.mean()[0])
+   
+   desc_acc = [sensor_acc, 
+               round(np.average(rounds_correct_sensor_rate_list), 4), 
+               round(np.average(rounds_incorrect_sensor_rate_list), 4), 
+               round(np.average(rounds_undeter_sensor_rate_list), 4),
+               ]
+   
+   df_each_correct = pd.DataFrame([[sensor_acc for i in range(rounds)],
+                                    rounds_correct_sensor_rate_list,
+                                    [average_columns[0] for i in range(rounds)]]).T
+   df_each_incorrect = pd.DataFrame([[sensor_acc for i in range(rounds)],
+                                    rounds_incorrect_sensor_rate_list,
+                                    [average_columns[1] for i in range(rounds)]]).T
+   df_each_undeter = pd.DataFrame([[sensor_acc for i in range(rounds)],
+                                    rounds_undeter_sensor_rate_list,
+                                    [average_columns[2] for i in range(rounds)]]).T
+   
    df_desc_acc = df_desc_acc.append(pd.DataFrame([desc_acc], columns = graph_columns))
+   
+   df_each_desc_all = pd.DataFrame().append(df_each_correct).append(df_each_incorrect).append(df_each_undeter)
+   df_each_desc_all.columns = graph_three_columns
+   df_desc_all = df_desc_all.append(df_each_desc_all)
+   df_desc_all["sensor_acc"] = df_desc_all["sensor_acc"].astype(float)
+   df_desc_all["value"] = df_desc_all["value"].astype(float)
+   
+   df_each_desc_rcv = pd.DataFrame([[sensor_acc for i in range(rounds)],
+                                    rounds_receive_num_rate_list,
+                                    ]).T
+   df_each_desc_rcv.columns = rcv_columns
+   df_desc_rcv_num = df_desc_rcv_num.append(df_each_desc_rcv)
+   
 
 plt.figure()
 colorlist = ["g", "r", "grey"]
 ax = df_desc_acc.plot(title = 'DimSize:' + str(dim) + ' StepSize:' + str(step_size),
              kind = 'area',
              x = df_desc_acc.columns[0],
+             y = average_columns,
              color = colorlist,
              alpha=0.5,
              figsize=(8,5)
@@ -270,3 +134,30 @@ plt.xlabel("Sensor Acc", fontsize=18)
 plt.ylabel("Sensor Opinion Acc", fontsize=18)
 plt.tick_params(labelsize=8)
 plt.grid(True)
+plt.show()
+plt.close('all')
+
+plt.figure(figsize=(8,5))
+sns.lineplot(x = "sensor_acc", y = "value", hue = "rate_kind", data = df_desc_all, palette = colorlist)
+plt.ylim([0, 1.0])
+plt.xlim([0, 1.0])
+plt.xticks(np.arange(0.0, 1.0, 0.05))
+plt.yticks(np.arange(0.0, 1.0, 0.1))
+plt.xlabel("Sensor Acc", fontsize=18)
+plt.ylabel("Sensor Opinion Acc", fontsize=18)
+plt.tick_params(labelsize=8)
+plt.grid(True)
+plt.show()
+plt.close('all')
+
+
+plt.figure(figsize=(8,5))
+sns.lineplot(x = "sensor_acc", y = "receive_num", data = df_desc_rcv_num)
+plt.xlim([0, 1.0])
+plt.xticks(np.arange(0.0, 1.0, 0.05))
+plt.xlabel("Sensor Acc", fontsize=18)
+plt.ylabel("Sensor Receive Num", fontsize=18)
+plt.tick_params(labelsize=8)
+plt.grid(True)
+plt.show()
+plt.close('all')
