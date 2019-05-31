@@ -106,7 +106,7 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
        if(random.random() > active_sensor_size / sensor_size):
            continue
        receive_num = receive_num + 1
-        
+       
        if belief_setting == Belief_Setting.BayesFilter:
            df_one_sample = multi_observe_dist_to_dataframe(env_array, 1)
            pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_one_sample[0].values, sensor_acc)
@@ -123,8 +123,44 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
        
    return sensor_op_array, pos_p_array, receive_num
 
+
+def sensor_simulation_by_step(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples, pre_p_array):
+   dim = len(env_array)
+   pos_p_array = np.full(dim, 1.0 / dim)
+   sensor_op_array = np.array([0 for d in range(dim)])
+   receive_num = 0
+   opinion_by_steps_array = np.array([-1 for d in range(step_size)])
+   current_op_index = -1
+   
+   for step in range(step_size):
+       opinion_by_steps_array[step] = current_op_index
+       if(step % op_intro_duration != 0):
+           continue
+       active_sensor_size = math.ceil(sensor_size * op_intro_rate)
+       if(random.random() > active_sensor_size / sensor_size):
+           continue
+       receive_num = receive_num + 1
+       
+       if belief_setting == Belief_Setting.BayesFilter:
+           df_one_sample = multi_observe_dist_to_dataframe(env_array, 1)
+           pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_one_sample[0].values, sensor_acc)
+       elif belief_setting == Belief_Setting.ParticleFilter:
+           df_samples = multi_observe_dist_to_dataframe(env_array, samples)
+           df_input = df_samples.sum(axis=1)
+           pos_p_array = get_pos_p_array_by_particle_filter(pre_p_array, df_input.values, sensor_acc)
+       
+       pre_p_array = pos_p_array
+       
+       if(len(np.where(pd.DataFrame(pos_p_array) > threshold)[0]) >= 1):
+           current_op_index = np.where(pd.DataFrame(pos_p_array) > threshold)[0][0]
+           opinion_by_steps_array[step] = current_op_index
+   
+   if current_op_index != -1:
+       sensor_op_array[current_op_index] = 1
+   return opinion_by_steps_array, pos_p_array, sensor_op_array, receive_num
+
     
-def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None):
+def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, turara_index = 0, is_plot = True):
     env_samples = None
     
     if not is_depend_sensor_acc:
@@ -151,8 +187,9 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None):
             #max_weight = sensor_acc
             #other_weight = (1 - max_weight) / (dim - 1)
             env_array = np.full(dim, other_weight)
-            env_array[0] = max_weight
-            pd.DataFrame(env_array).plot(kind = 'bar')
+            env_array[turara_index] = max_weight
+            if is_plot:
+                pd.DataFrame(env_array).plot(kind = 'bar')
             return env_array
     else:
         if env_dist == Env_Dist.Turara_Depend_Sensor_Acc:
@@ -161,7 +198,7 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None):
             #max_weight = sensor_acc
             #other_weight = (1 - max_weight) / (dim - 1)
             env_array = np.full(dim, other_weight)
-            env_array[0] = max_weight
+            env_array[turara_index] = max_weight
             return env_array
         
     count, bins, ignored = plt.hist(env_samples, dim, normed=True)
@@ -175,4 +212,4 @@ def make_sensor_acc(agent_weight_setting, ori_senror_weight, fix_sensor_weight):
         my_sensor_weight = ori_senror_weight
     elif agent_weight_setting == Agent_Weight_Setting.Sensor_Weight_Fix:
         my_sensor_weight = fix_sensor_weight
-    return my_sensor_weight
+    return round(my_sensor_weight, 4)

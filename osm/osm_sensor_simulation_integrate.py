@@ -8,15 +8,15 @@ import seaborn as sns
 import osm_functions as osm
 
 
-my_env_dist = osm.Env_Dist.Laplace
-my_fix_turara = 0.4
+my_env_dist = osm.Env_Dist.Turara_Fix
+my_fix_turara = 0.6
 my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
 my_fix_sensor_weight = 0.55
-my_belief_setting = osm.Belief_Setting.BayesFilter
-#my_belief_setting = osm.Belief_Setting.ParticleFilter
+#my_belief_setting = osm.Belief_Setting.BayesFilter
+my_belief_setting = osm.Belief_Setting.ParticleFilter
 my_samples = 5
 
-dim = 100
+dim = 2
 step_size = 1500
 rounds = 3
 threshold = 0.90
@@ -39,7 +39,7 @@ env_array = None
 thete_map = None
 
 if my_env_dist != osm.Env_Dist.Turara_Depend_Sensor_Acc:
-    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara)
+    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = 0)
     thete_map = env_array.argmax()
 
 sensor_accs = None
@@ -57,7 +57,7 @@ for sensor_acc in sensor_accs:
        df_receive_num = pd.DataFrame()
 
        if my_env_dist == osm.Env_Dist.Turara_Depend_Sensor_Acc:
-           env_array = osm.make_env(my_env_dist, dim, True, sensor_acc = sensor_acc)
+           env_array = osm.make_env(my_env_dist, dim, True, sensor_acc = sensor_acc, turara_index = 0)
            thete_map = env_array.argmax()
            
        my_sensor_weight = osm.make_sensor_acc(my_agent_weight_setting, sensor_acc, my_fix_sensor_weight)
@@ -125,7 +125,6 @@ ax = df_desc_acc.plot(title = 'DimSize:' + str(dim) + ' StepSize:' + str(step_si
              alpha=0.5,
              figsize=(8,5)
              )
-
 plt.ylim([0, 1.0])
 plt.xlim([0, 1.0])
 plt.xticks(np.arange(0.0, 1.0, 0.05))
