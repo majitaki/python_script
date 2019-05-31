@@ -124,13 +124,13 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
    return sensor_op_array, pos_p_array, receive_num
 
 
-def sensor_simulation_by_step(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples, pre_p_array):
+def sensor_simulation_by_step(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples, pre_p_array, cur_op_index):
    dim = len(env_array)
    pos_p_array = np.full(dim, 1.0 / dim)
    sensor_op_array = np.array([0 for d in range(dim)])
    receive_num = 0
    opinion_by_steps_array = np.array([-1 for d in range(step_size)])
-   current_op_index = -1
+   current_op_index = cur_op_index
    
    for step in range(step_size):
        opinion_by_steps_array[step] = current_op_index

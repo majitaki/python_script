@@ -18,7 +18,7 @@ my_samples = 5
 
 dim = 10
 #step_size = 1500
-step_duration = 500
+step_duration = 2500
 rounds = 3
 threshold = 0.90
 sensor_size = 30
@@ -45,6 +45,8 @@ my_sensor_weight = osm.make_sensor_acc(my_agent_weight_setting, my_sensor_acc, m
 pre_p_array = np.full(dim, 1.0 / dim)
 df_opinion_by_steps = pd.DataFrame(columns = ['op_value', 'is_correct', 'correct_op'])
 
+initial_cur_op_index = -1
+my_cur_op_index = initial_cur_op_index
 
 for t_index in range(dim):
     env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = t_index)
@@ -57,8 +59,12 @@ for t_index in range(dim):
                                             env_array,
                                             my_sensor_weight,
                                             my_belief_setting,
-                                            my_samples, pre_p_array)
+                                            my_samples, 
+                                            pre_p_array,
+                                            my_cur_op_index)
     pre_p_array = results[1]
+    my_cur_op_index = results[0][-1]
+    
     df_each = pd.DataFrame(columns = ['op_value', 'is_correct', 'correct_op'])
     df_each['op_value'] = results[0]
     df_each['is_correct'] = df_each['op_value'] == thete_map
