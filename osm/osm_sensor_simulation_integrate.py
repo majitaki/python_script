@@ -14,9 +14,9 @@ my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_A
 my_fix_sensor_weight = 0.55
 #my_belief_setting = osm.Belief_Setting.BayesFilter
 my_belief_setting = osm.Belief_Setting.ParticleFilter
-my_samples = 5
+my_samples = 10
 
-dim = 2
+dim = 10
 step_size = 1500
 rounds = 3
 threshold = 0.90

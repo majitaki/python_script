@@ -21,11 +21,15 @@ class Belief_Setting(IntEnum):
     BayesFilter = auto()
     ParticleFilter = auto()
 
-def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
-    #max_weight = weight
-    #other_weight = (1 - max_weight) / (dim - 1)
+def make_turara(dim, weight):
     max_weight = 1 / (1 + (dim - 1) * (1 - weight))
     other_weight = max_weight * (1 - weight)
+    return max_weight, other_weight
+
+def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
+    weights = make_turara(dim, weight)
+    max_weight = weights[0]
+    other_weight = weights[1]
     
     likelihoods = np.full(dim, other_weight)
     likelihoods[sample_index] = max_weight
@@ -33,8 +37,10 @@ def get_likelihoods_for_bayse_filter(dim, sample_index, weight):
 
 def get_likelihoods_for_particle_filter(dim, sample_array, weight):
     value_exist_num = np.sum(sample_array != 0)
-    max_weight = 1 / (1 + (value_exist_num - 1) * (1 - weight))
-    other_weight = max_weight * (1 - weight)
+    weights = make_turara(value_exist_num, weight)
+    max_weight = weights[0]
+    other_weight = weights[1]
+    
     max_index = sample_array.argmax()
     likelihoods = np.array([max_weight if i == max_index else
                             other_weight if sample_array[i] != 0 else
@@ -182,10 +188,10 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, tur
             env_samples = np.random.laplace(loc, scale, size)
             
         elif env_dist == Env_Dist.Turara_Fix:
-            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
-            other_weight = max_weight * (1 - sensor_acc)
-            #max_weight = sensor_acc
-            #other_weight = (1 - max_weight) / (dim - 1)
+            weights = make_turara(dim, sensor_acc)
+            max_weight = weights[0]
+            other_weight = weights[1]
+            
             env_array = np.full(dim, other_weight)
             env_array[turara_index] = max_weight
             if is_plot:
@@ -193,10 +199,9 @@ def make_env(env_dist, dim, is_depend_sensor_acc = False, sensor_acc = None, tur
             return env_array
     else:
         if env_dist == Env_Dist.Turara_Depend_Sensor_Acc:
-            max_weight = 1 / (1 + (dim - 1) * (1 - sensor_acc))
-            other_weight = max_weight * (1 - sensor_acc)
-            #max_weight = sensor_acc
-            #other_weight = (1 - max_weight) / (dim - 1)
+            weights = make_turara(dim, sensor_acc)
+            max_weight = weights[0]
+            other_weight = weights[1]
             env_array = np.full(dim, other_weight)
             env_array[turara_index] = max_weight
             return env_array

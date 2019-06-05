@@ -9,16 +9,16 @@ import osm_functions as osm
 
 
 my_env_dist = osm.Env_Dist.Turara_Fix
-my_fix_turara = 0.6
+my_fix_turara = 0.9
 my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
 my_fix_sensor_weight = 0.55
-my_belief_setting = osm.Belief_Setting.BayesFilter
-#my_belief_setting = osm.Belief_Setting.ParticleFilter
+#my_belief_setting = osm.Belief_Setting.BayesFilter
+my_belief_setting = osm.Belief_Setting.ParticleFilter
 my_samples = 5
 
-dim = 10
+dim = 100
 #step_size = 1500
-step_duration = 2500
+step_duration = 1000
 rounds = 3
 threshold = 0.90
 sensor_size = 30
@@ -44,12 +44,13 @@ thete_map = None
 my_sensor_weight = osm.make_sensor_acc(my_agent_weight_setting, my_sensor_acc, my_fix_sensor_weight)
 pre_p_array = np.full(dim, 1.0 / dim)
 df_opinion_by_steps = pd.DataFrame(columns = ['op_value', 'is_correct', 'correct_op'])
+df_round_correctness = pd.DataFrame()
 
 initial_cur_op_index = -1
 my_cur_op_index = initial_cur_op_index
 
 for t_index in range(dim):
-    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = t_index)
+    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = t_index, is_plot = False)
     thete_map = env_array.argmax()
     results = osm.sensor_simulation_by_step(step_duration, 
                                             threshold,
@@ -70,11 +71,13 @@ for t_index in range(dim):
     df_each['is_correct'] = df_each['op_value'] == thete_map
     df_each['correct_op'] = thete_map
     df_opinion_by_steps = df_opinion_by_steps.append(df_each)
+    df_round_correctness = df_round_correctness.append([df_each.iloc[-1]['is_correct']])
+    df_round_correctness = df_round_correctness.reset_index(drop = True)
 
 df_opinion_by_steps = df_opinion_by_steps.reset_index(drop = True)
-correctness = df_opinion_by_steps.is_correct.sum() / len(df_opinion_by_steps.is_correct)
+correctness = df_round_correctness.sum() / len(df_round_correctness)
 
-plt.title("Opinion Accuracy " + str(correctness))
+plt.title("Opinion Accuracy " + str(correctness[0]))
 df_opinion_by_steps.is_correct.astype(int).plot()
 plt.show()
 plt.close('all')
