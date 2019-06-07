@@ -21,6 +21,7 @@ dim = 10
 step_duration = 1000
 rounds = 3
 threshold = 0.90
+agent_size = 100
 sensor_size = 30
 op_intro_rate = 0.1
 op_intro_duration = 10

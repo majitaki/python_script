@@ -4,8 +4,9 @@ import numpy as np
 import math
 import random
 from enum import IntEnum, auto
-import networkx as nx
 np.set_printoptions(precision=3)
+
+
 
 class Env_Dist(IntEnum):
     Normal = auto()
@@ -18,9 +19,36 @@ class Agent_Weight_Setting(IntEnum):
     Sensor_Weight_Depend_Sensor_Acc = auto()
     Sensor_Weight_Fix = auto()
 
-class Belief_Setting(IntEnum):
-    BayesFilter = auto()
-    ParticleFilter = auto()
+class Cheat_Dice_Particle_Filter():
+    def __init__(self, sample_num, cheat_rate):
+        self.sample_num = sample_num
+        self.cheat_rate = cheat_rate
+    
+    def get_posterior_p(self, prior_p):
+        likelihoods = get_likelihoods_for_particle_filter(self.sample_num, prior_p, self.cheat_rate)
+        weight_dist = get_weight_distribute_for_particle_filter(prior_p, likelihoods)
+        pos_p = prior_p * weight_dist
+        
+        if np.sum(pos_p) == 0:
+            return np.full(self.sample_num, 1.0 / self.sample_num)
+        return pos_p / np.sum(pos_p)
+
+		 
+class Cheat_Dice_Bayse_Filter():
+    def __init__(self, cheat_rate):
+        self.cheat_rate = cheat_rate
+    
+    def get_posterior_p(self, prior_p):
+        dim = len(prior_p)
+        likelihoods = get_likelihoods_for_particle_filter(dim, prior_p, self.cheat_rate)
+        weight_dist = get_weight_distribute_for_particle_filter(prior_p, likelihoods)
+        pos_p = prior_p * weight_dist
+        
+        if np.sum(pos_p) == 0:
+            return np.full(dim, 1.0 / dim)
+        return pos_p / np.sum(pos_p)
+
+
 
 def make_turara(dim, weight):
     max_weight = 1 / (1 + (dim - 1) * (1 - weight))
@@ -132,112 +160,6 @@ def sensor_simulation(step_size, threshold, op_intro_rate, op_intro_duration, se
 
 
 def sensor_simulation_by_step(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples, pre_p_array, cur_op_index):
-   dim = len(env_array)
-   pos_p_array = np.full(dim, 1.0 / dim)
-   sensor_op_array = np.array([0 for d in range(dim)])
-   receive_num = 0
-   opinion_by_steps_array = np.array([-1 for d in range(step_size)])
-   current_op_index = cur_op_index
-   
-   for step in range(step_size):
-       opinion_by_steps_array[step] = current_op_index
-       if(step % op_intro_duration != 0):
-           continue
-       active_sensor_size = math.ceil(sensor_size * op_intro_rate)
-       if(random.random() > active_sensor_size / sensor_size):
-           continue
-       receive_num = receive_num + 1
-       
-       if belief_setting == Belief_Setting.BayesFilter:
-           df_one_sample = multi_observe_dist_to_dataframe(env_array, 1)
-           pos_p_array = get_pos_p_array_by_bayse_filter(pre_p_array, df_one_sample[0].values, sensor_acc)
-       elif belief_setting == Belief_Setting.ParticleFilter:
-           df_samples = multi_observe_dist_to_dataframe(env_array, samples)
-           df_input = df_samples.sum(axis=1)
-           pos_p_array = get_pos_p_array_by_particle_filter(pre_p_array, df_input.values, sensor_acc)
-       
-       pre_p_array = pos_p_array
-       
-       if(len(np.where(pd.DataFrame(pos_p_array) > threshold)[0]) >= 1):
-           current_op_index = np.where(pd.DataFrame(pos_p_array) > threshold)[0][0]
-           opinion_by_steps_array[step] = current_op_index
-   
-   if current_op_index != -1:
-       sensor_op_array[current_op_index] = 1
-   return opinion_by_steps_array, pos_p_array, sensor_op_array, receive_num
-
-
-def update_belief(M, A, E, G, belief_setting, sensor_acc, samples, threshold):
-    from_distribute = None
-    before_beleifs = pd.DataFrame(A['belief'])
-    #update belief
-    for index, row in M.iterrows():
-        if row['from'] == -1:
-            from_distribute = E
-        else:
-            from_agent_info = A[A['node_index'] == row['from']]
-            from_distribute = from_agent_info['belief'].values[0]
-    
-        to_agent_info = A[A['node_index'] == row['to']]
-        pre_p = to_agent_info['belief'].values[0]    
-        pos_p = None
-        if belief_setting == Belief_Setting.BayesFilter:
-               df_one_sample = multi_observe_dist_to_dataframe(from_distribute, 1)
-               pos_p = get_pos_p_array_by_bayse_filter(pre_p, df_one_sample[0].values, sensor_acc)
-        elif belief_setting == Belief_Setting.ParticleFilter:
-               df_samples = multi_observe_dist_to_dataframe(from_distribute, samples)
-               df_input = df_samples.sum(axis=1)
-               pos_p = get_pos_p_array_by_particle_filter(pre_p, df_input.values, sensor_acc)
-        
-        to_agent_index = to_agent_info.index[0]
-        A.iloc[to_agent_index, 2] =pos_p
-    
-    #reset M
-    M = pd.DataFrame(columns = ['from', 'to'])
-    
-    #update opinion
-    
-    
-    for index, row in A.iterrows():
-        if(len(np.where(pd.DataFrame(row['belief']) > threshold)[0]) >= 1):      
-            
-            change_op_index = np.where(pd.DataFrame(row['belief']) > threshold)[0][0]
-            np.where(pd.DataFrame(before_beleifs[change_op_index]) <= threshold)[1]
-            
-            row['opinion'] = np.where(pd.DataFrame(row['belief']) > threshold)[0][0]
-    
-    #send message
-    
-    
-        
-def agent_simulation_by_step(step_size, threshold, op_intro_rate, op_intro_duration, sensor_size, env_array, sensor_acc, belief_setting, samples, pre_p_array, cur_op_index, G):
-
-   A = pd.DataFrame(columns = ['node_index', 'opinion', 'belief'])
-   A['node_index'] = list(G.nodes)
-   A['opinion'] = np.full(len(A), -1)
-   dim = len(env_array)
-   init_belief = np.full(dim, 1.0 / dim)
-   A['belief'] = [init_belief for i in range(len(A))]
-   A = A.astype('object')
-   
-   S = random.sample(list(G.nodes), sensor_size)
-   E = env_array
-   M = pd.DataFrame(columns = ['from', 'to'])
-   
-   for cur_step in range(step_size):
-       #observe env and receive neighbor
-       if(cur_step % op_intro_duration != 0):
-           continue
-       active_sensor_size = math.ceil(sensor_size * op_intro_rate)
-       active_S = random.sample(S, active_sensor_size)
-       for s in active_S:
-           tmp_series = pd.Series([-1, s], index = ['from', 'to'])
-           M = M.append(tmp_series, ignore_index = True)
-       
-       #update belief and opinion
-       A, M = update_belief(M, A, E, G, belief_setting, threshold)
-        
-    
    dim = len(env_array)
    pos_p_array = np.full(dim, 1.0 / dim)
    sensor_op_array = np.array([0 for d in range(dim)])
