@@ -6,21 +6,24 @@ from joblib import Parallel, delayed
 np.set_printoptions(precision=3)
 import seaborn as sns
 import osm_functions as osm
+warnings.filterwarnings('ignore')
 
+sns.set()
+sns.set_style("whitegrid", {'grid.linestyle': '--'})
 
 my_env_dist = osm.Env_Dist.Turara_Fix
-my_fix_turara = 0.6
+my_fix_turara = 0.5
 my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
-my_fix_sensor_weight = 0.55
+my_fix_sensor_weight = 0.7
 #my_belief_setting = osm.Belief_Setting.BayesFilter
 my_belief_setting = osm.Belief_Setting.ParticleFilter
 my_samples = 10
 
-dim = 10
-step_size = 1500
-rounds = 3
-threshold = 0.90
-sensor_size = 30
+dim = 5
+step_size = 3000
+rounds = 10
+threshold = 0.9
+sensor_size = 10
 op_intro_rate = 0.1
 op_intro_duration = 10
 op_intro_size = 3 * sensor_size

@@ -8,13 +8,13 @@ import seaborn as sns
 import osm_functions as osm
 
 
-my_env_dist = osm.Env_Dist.Turara_Fix
+my_env_dist = osm.Env_Dist.Normal
 my_fix_turara = 0.9
 my_agent_weight_setting = osm.Agent_Weight_Setting.Sensor_Weight_Depend_Sensor_Acc
 my_fix_sensor_weight = 0.55
 #my_belief_setting = osm.Belief_Setting.BayesFilter
 my_belief_setting = osm.Belief_Setting.ParticleFilter
-my_samples = 5
+my_samples = 10
 
 dim = 10
 #step_size = 1500
@@ -49,8 +49,16 @@ df_round_correctness = pd.DataFrame()
 initial_cur_op_index = -1
 my_cur_op_index = initial_cur_op_index
 
+def max_irekae(array, index):
+    tmp = array.max()
+    array[array.argmax()] = array[index]
+    array[index] = tmp
+    return array
+
+env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = 0, is_plot = False)    
 for t_index in range(dim):
-    env_array = osm.make_env(my_env_dist, dim, False, sensor_acc = my_fix_turara, turara_index = t_index, is_plot = False)
+    env_array = max_irekae(env_array, t_index)
+    pd.DataFrame(env_array).plot(kind = 'bar')
     thete_map = env_array.argmax()
     results = osm.sensor_simulation_by_step(step_duration, 
                                             threshold,
